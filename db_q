@@ -1,0 +1,824 @@
+---
+name: database-modernization-skill
+description: 'Enterprise-grade database modernization workflow. Use when migrating a repository from one database technology to another (e.g., Oracle->PostgreSQL, SQL Server->Azure SQL, MySQL->Aurora, MongoDB->Cosmos DB, DB2->Snowflake, Sybase->PostgreSQL, on-prem->cloud). Analyzes and transforms ONLY database-related code: SQL/PLSQL/T-SQL queries, stored procedures, schema/DDL, ORM mappings (Hibernate, Entity Framework, SQLAlchemy, TypeORM, Sequelize, GORM, Mongoose, Prisma, JPA, Dapper, ActiveRecord), connection strings, drivers, migration scripts (Flyway, Liquibase, Alembic, Knex, EF Migrations), data access layers (DAO/Repository), config files, and CI/CD database steps. Supports relational (Oracle, SQL Server, MySQL, PostgreSQL, MariaDB, DB2, Sybase), NoSQL (MongoDB, Cassandra, DynamoDB, Cosmos DB, Couchbase, Redis), warehouse (Snowflake, BigQuery, Redshift, Synapse), and cloud-native (Aurora, Cloud SQL, Spanner, CockroachDB, PlanetScale, Supabase). Language-agnostic: Java, C#/.NET, Python, Node.js/TypeScript, Go, Ruby, PHP, Scala, Kotlin. Produces production-ready guidance, dialect-correct rewrites, ORM remappings, and zero-downtime migration plans. Does NOT modify unrelated business logic, UI, or non-database integrations.'
+argument-hint: '<source-db> -> <target-db> [scope: full|schema|queries|orm|config]'
+---
+
+# Database Modernization Skill
+
+Enterprise workflow for migrating a repository's database technology end-to-end while preserving all non-database business logic.
+
+## When to Use
+
+Invoke this skill when the user requests any of:
+
+- "Migrate from `<DB-A>` to `<DB-B>`"
+- "Modernize the database layer"
+- "Port stored procedures / queries / schema to `<target>`"
+- "Replace ORM dialect / driver / provider"
+- "Convert Oracle PL/SQL to PostgreSQL PL/pgSQL"
+- "Move from on-prem `<DB>` to `<cloud DB>`"
+- "Translate `<NoSQL>` data model to `<RDBMS>`" (or vice versa)
+- "Audit DB compatibility for `<target>`"
+
+Do **not** invoke for: feature work, UI changes, generic refactoring, performance tuning unrelated to migration, or business-logic changes.
+
+## Hard Constraints
+
+1. **Scope lock — DB only.** Touch ONLY files matching DB-related categories (see Scope Matrix below). Never modify controllers, view layers, business services, domain rules, validation logic, or unrelated integrations unless they directly call a DB API that must change.
+2. **Behavior preservation.** Output queries must return semantically equivalent result sets. Flag every case where exact equivalence is impossible (e.g., `ROWNUM` vs `LIMIT`, `NVL` vs `COALESCE` edge cases, implicit type coercions, collation/case-sensitivity differences).
+3. **No silent data loss.** Any type narrowing, precision change, or encoding change MUST be reported in the risk register before code is emitted.
+4. **Production-ready output.** Every transformation includes: dialect-correct syntax, parameterized queries (no string concatenation), explicit transactions where required, indexed access paths preserved, and rollback strategy.
+5. **Reversibility.** Generate forward AND backward migration scripts when feasible.
+
+## Procedure
+
+Execute phases in order. Update the user at each phase boundary.
+
+### Phase 1 — Discovery & Inventory
+
+1. Confirm source DB, target DB, and scope with the user if not provided.
+2. Detect repository stack (language, framework, ORM, build system, migration tool).
+3. Inventory every DB touchpoint using the Scope Matrix below.
+4. Produce an inventory table: `path | category | source-dialect-feature | risk`.
+
+### Phase 2 — Compatibility Assessment
+
+1. For each item in the inventory, classify into:
+   - **Direct port** — syntax-identical or trivial swap
+   - **Dialect rewrite** — same semantics, different syntax
+   - **Feature gap** — target lacks a source feature (e.g., Oracle `MERGE`, packages, hierarchical `CONNECT BY`, sequences as default; SQL Server CLR; Mongo aggregation stages without RDBMS equivalents)
+   - **Paradigm shift** — relational↔document, ACID↔eventual, row↔columnar
+2. Apply the dialect rules in the Dialect Translation section for the relevant source→target pair.
+3. Produce a **Risk Register**: feature gap, blast radius, recommended remediation, fallback.
+
+### Phase 3 — Modernization Plan
+
+Output a written plan before code changes. Required sections:
+
+- **Target architecture**: driver, connection model, pooling, TLS, auth (managed identity / IAM / secrets).
+- **Schema strategy**: type mapping table (source type → target type with rationale).
+- **Query strategy**: ORM-first vs raw-SQL-first; which queries become parameterized prepared statements; which become stored procedures or views.
+- **Data migration strategy**: pick one — bulk dump/load, ETL (e.g., DMS, ADF, Datastream, Striim, Debezium CDC), dual-write, strangler. Document RPO/RTO.
+- **Cutover model**: big-bang vs zero-downtime (dual-write + backfill + shadow reads + switch).
+- **Rollback plan**: triggers, snapshot points, abort criteria.
+- **Test plan**: row-count parity, checksum sampling, query-result equivalence harness, performance baseline.
+
+Pause for user approval of the plan before Phase 4 if changes are non-trivial.
+
+### Phase 4 — Code Transformation
+
+Apply changes file-by-file, grouped by category. For each change set:
+
+1. Show the file path and category.
+2. Emit the transformed code with dialect-correct syntax.
+3. Reference the exact rule applied (e.g., `Oracle DUAL → PostgreSQL: omit FROM clause`).
+4. Preserve formatting, comments, and surrounding non-DB code.
+5. Update ORM/driver dependencies in package manifests (`pom.xml`, `*.csproj`, `requirements.txt`, `package.json`, `go.mod`, `Gemfile`, `composer.json`).
+6. Update connection strings and config (`application.yml`, `appsettings.json`, `.env.example`, `config/database.yml`, K8s secrets manifests) — never commit real secrets.
+7. Regenerate migrations in the target tool's format.
+8. Update test fixtures and seed data.
+
+Use the rule tables in the **Dialect Translation**, **ORM Mappings**, **Type Mappings**, and **Paradigm Shifts** sections below.
+
+### Phase 5 — Validation & Handoff
+
+1. Generate a **Validation Pack** (see Validation Pack section).
+2. Update `README.md` only with the new local-dev DB instructions (do not rewrite unrelated docs).
+3. Produce a **Change Manifest**: every file touched, category, and one-line reason.
+4. List **Manual Follow-ups** the agent could not safely automate (e.g., DBA-managed grants, vendor-specific tooling, encrypted column re-keying).
+
+## Quality Gates (must pass before completion)
+
+- [ ] No non-DB files modified (verify against scope matrix)
+- [ ] All queries parameterized — no string concatenation introduced
+- [ ] All source-dialect-specific syntax replaced or explicitly flagged
+- [ ] Type mappings explicit and reversible-where-possible
+- [ ] Migration scripts present for both forward and backward direction
+- [ ] Connection config uses environment variables or secret references, never hard-coded credentials
+- [ ] Risk register lists every feature gap with remediation
+- [ ] Change manifest produced
+
+## Decision Aids
+
+- **Direct port vs rewrite?** If syntax is identical AND semantics identical AND performance characteristics equivalent → direct port. Otherwise rewrite.
+- **ORM dialect swap vs raw SQL rewrite?** If the ORM has a first-class dialect for the target → swap dialect first, then fix the residue of native queries. If not → escalate to raw SQL with parameterized prepared statements.
+- **Stored procs: port or inline?** Port if heavy, set-based, or security-boundary logic. Inline into application code if procedural-only and target DB lacks equivalent procedural language. Document the choice.
+- **NoSQL→RDBMS modeling?** Start from access patterns, not documents. See Paradigm Shifts section.
+- **Zero-downtime required?** Default to expand/contract: add new schema → dual-write → backfill → shadow-read verify → cut reads → drop old.
+
+## Anti-patterns to Reject
+
+- Modifying business logic "while we're in there"
+- Rewriting queries by hand without recording the dialect rule applied
+- Hard-coding new connection strings or secrets
+- Skipping the risk register because "it looked simple"
+- One-shot big-bang cutover plans without rollback
+- Replacing parameterized queries with string interpolation
+- Assuming ORM dialect swap covers native queries — it does not
+
+---
+
+## Scope Matrix — What Counts as a Database File
+
+**In-scope = may be modified. Out-of-scope = must not be touched.**
+
+### In-Scope Categories
+
+| Category | Typical Paths / Patterns | Examples |
+|---|---|---|
+| Schema / DDL | `**/db/**/*.sql`, `**/schema/**`, `**/migrations/**` | `CREATE TABLE`, `CREATE INDEX`, `CREATE VIEW` |
+| Stored procs / functions / triggers / packages | `**/procedures/**`, `**/functions/**`, `*.pks`, `*.pkb`, `*.prc`, `*.fnc` | PL/SQL, T-SQL, PL/pgSQL, MySQL routines |
+| Raw SQL files | `**/*.sql`, `resources/**/*.sql` | Query banks, report SQL |
+| Embedded SQL strings | Any source file containing `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `CREATE`, `ALTER` literals | `repository.java`, `*_dao.py`, `*Repository.cs` |
+| ORM entity / mapping | `*.hbm.xml`, `@Entity`, `DbContext`, `models.py`, `schema.prisma`, `*.entity.ts`, `ActiveRecord` models, `Mongoose` schemas, `*.edmx` | JPA/Hibernate, EF Core, SQLAlchemy, TypeORM, Sequelize, Prisma, GORM, Dapper, Mongoose |
+| ORM config | `persistence.xml`, `hibernate.cfg.xml`, `database.yml`, `ormconfig.json`, `prisma.config`, `alembic.ini` | Dialect, driver class, naming strategy |
+| Migration tooling | `db/migrate/**`, `migrations/**`, `flyway/**`, `liquibase/**/changelog*`, `alembic/versions/**`, `Migrations/**` | Flyway, Liquibase, Alembic, EF Migrations, Knex, Prisma Migrate |
+| Data access layer | `**/dao/**`, `**/repository/**`, `**/repositories/**`, `**/data/**`, `**/persistence/**` | DAO/Repository pattern classes |
+| Connection config | `application.properties`, `application.yml`, `appsettings*.json`, `.env*`, `config/database.yml`, `web.config` connection strings | JDBC URLs, ADO.NET, Mongo URIs |
+| Driver / client dependencies | `pom.xml`, `build.gradle`, `*.csproj`, `requirements.txt`, `package.json`, `go.mod`, `Gemfile`, `composer.json` | Only DB driver / ORM / migration tool entries |
+| Test fixtures & seed data | `**/fixtures/**`, `**/seeds/**`, `**/testdata/**/*.sql` | Seed SQL, factory data |
+| Local-dev DB infra | `docker-compose*.yml` DB services, `Dockerfile` DB layers, `helm/**` DB charts | Postgres/Mongo/SQL Server services |
+| IaC for DB provisioning | `terraform/**/*.tf`, `bicep/**`, `cloudformation/**`, `pulumi/**` (DB resources only) | RDS, Cloud SQL, Cosmos, Spanner |
+| CI/CD DB steps | `.github/workflows/**`, `azure-pipelines.yml`, `Jenkinsfile` (only DB-related stages) | DB spin-up, migration run, schema validation |
+
+### Out-of-Scope (Do Not Modify)
+
+- Controllers / route handlers (UI/API contract, not DB)
+- Business / domain services (behavior preservation)
+- View / template / front-end (not DB)
+- Validation & DTO classes (business rules)
+- Authentication / authorization logic (unless DB-backed and the DB itself changes)
+- Logging, telemetry, observability (unless DB-specific instrumentation)
+- Unrelated integrations (queues, caches, external APIs) — only if not the migration target
+- Build pipelines unrelated to DB stages
+- Documentation unrelated to DB setup
+
+### Borderline Cases — Ask Before Touching
+
+- **Domain models that double as ORM entities** — modify ORM annotations/decorators only; do not change field names or business methods.
+- **Service classes with one ad-hoc embedded SQL string** — rewrite the SQL only; do not restructure the method.
+- **Caching layer (Redis) used alongside primary DB** — in-scope only if cache is the migration target.
+- **Read-model projections / event-sourced views** — in-scope if backed by the migrating DB.
+- **Reports / BI exports** — in-scope if they query the migrating DB directly.
+
+### Detection Heuristics
+
+1. Grep for dialect tokens: `ROWNUM`, `NVL`, `DUAL`, `SYSDATE`, `CONNECT BY`, `TOP `, `IDENTITY`, `NVARCHAR`, `LIMIT`, `OFFSET`, `RETURNING`, `ON CONFLICT`, `MERGE`, `PIVOT`, `OUTER APPLY`, `WITH (NOLOCK)`, `@@IDENTITY`, `SEQUENCE`, `AUTO_INCREMENT`.
+2. Grep for driver imports: `oracle.jdbc`, `Microsoft.Data.SqlClient`, `psycopg2`, `pymongo`, `mysql.connector`, `pg`, `mssql`, `mongodb`, `cassandra-driver`, `cosmos`.
+3. Grep for connection-string schemes: `jdbc:`, `mongodb://`, `mongodb+srv://`, `postgresql://`, `mysql://`, `sqlserver://`, `oracle:thin:`, `Data Source=`.
+4. Look up ORM markers: `@Entity`, `@Table`, `DbContext`, `class Meta:` (Django), `db.Model` (SQLAlchemy), `extends Model` (Sequelize), `schema.prisma`.
+
+---
+
+## Dialect Translation
+
+Apply rules per source→target pair. When a pair-specific table is not present below, fall back to General Cross-Dialect Rules and consult the official target-DB documentation.
+
+### General Cross-Dialect Rules
+
+**Pagination**
+
+| Source | Target Replacement |
+|---|---|
+| `ROWNUM <= N` (Oracle) | `LIMIT N` (PG/MySQL) / `FETCH FIRST N ROWS ONLY` (ANSI) / `TOP N` (SQL Server) |
+| `TOP N` (SQL Server) | `LIMIT N` / `FETCH FIRST N ROWS ONLY` |
+| `LIMIT N OFFSET M` | `OFFSET M ROWS FETCH NEXT N ROWS ONLY` |
+
+**NULL handling**
+- `NVL(a,b)` → `COALESCE(a,b)`
+- `ISNULL(a,b)` (SQL Server) → `COALESCE(a,b)`
+- `IFNULL(a,b)` (MySQL) → `COALESCE(a,b)`
+- `NULLIF(a,b)` is portable.
+
+**Date/Time**
+- `SYSDATE` (Oracle) → `CURRENT_TIMESTAMP` / `NOW()`
+- `GETDATE()` (SQL Server) → `CURRENT_TIMESTAMP`
+- Format functions differ wildly — translate `TO_CHAR`, `FORMAT`, `DATE_FORMAT`, `to_char` carefully and flag locale dependence.
+
+**Upsert**
+- Oracle/ANSI `MERGE` → PostgreSQL `INSERT ... ON CONFLICT (key) DO UPDATE`
+- MySQL `INSERT ... ON DUPLICATE KEY UPDATE` → PostgreSQL `ON CONFLICT`
+- SQL Server `MERGE` → keep, but warn about documented concurrency bugs; prefer separate `UPDATE`+`INSERT` in a serializable transaction for PostgreSQL where atomicity matters.
+
+**Auto-increment / Sequences**
+
+| Source | Target |
+|---|---|
+| Oracle `SEQUENCE.NEXTVAL` | PostgreSQL `nextval('seq')` or `GENERATED BY DEFAULT AS IDENTITY` |
+| SQL Server `IDENTITY(1,1)` | PostgreSQL `GENERATED ALWAYS AS IDENTITY` |
+| MySQL `AUTO_INCREMENT` | PostgreSQL `GENERATED ALWAYS AS IDENTITY` |
+
+**Hierarchical**
+- Oracle `CONNECT BY` → recursive CTE (`WITH RECURSIVE`).
+
+**Booleans**
+- Oracle has no native BOOLEAN in SQL → map to `NUMBER(1)` / `CHAR(1)` source; translate to native `BOOLEAN` on target and adjust app-layer casts.
+
+**Empty string vs NULL**
+- Oracle treats `''` as `NULL`. Other DBs do not. Audit and add explicit `NULLIF(col, '')` where behavior depended on this.
+
+**Case sensitivity**
+- PostgreSQL is case-sensitive on quoted identifiers. SQL Server default collation is case-insensitive. MySQL identifier case depends on OS. Decide a collation/case policy and document it.
+
+**Locking hints**
+- SQL Server `WITH (NOLOCK)` has no portable equivalent. Replace with appropriate isolation level (`READ UNCOMMITTED`) and flag — usually a smell.
+- `FOR UPDATE` is portable across Oracle, PostgreSQL, MySQL (InnoDB), DB2.
+
+**Always Flag (Non-Equivalences)**
+- Implicit type coercion differences
+- Collation / sort order changes
+- Time-zone semantics (`TIMESTAMP WITH TIME ZONE` vs without)
+- Floating point and `NUMERIC` precision
+- Empty-string-as-NULL (Oracle)
+- Trailing-space trimming on `CHAR` vs `VARCHAR`
+- Identifier max-length differences
+
+### Oracle → PostgreSQL
+
+**Built-ins**
+
+| Oracle | PostgreSQL |
+|---|---|
+| `NVL(a,b)` | `COALESCE(a,b)` |
+| `NVL2(a,b,c)` | `CASE WHEN a IS NOT NULL THEN b ELSE c END` |
+| `DECODE(x,a,b,c,d,e)` | `CASE x WHEN a THEN b WHEN c THEN d ELSE e END` |
+| `SYSDATE` | `CURRENT_TIMESTAMP::timestamp` |
+| `SYSTIMESTAMP` | `CURRENT_TIMESTAMP` |
+| `TRUNC(date)` | `date_trunc('day', ts)` |
+| `TRUNC(date,'MM')` | `date_trunc('month', ts)` |
+| `ADD_MONTHS(d,n)` | `d + (n \|\| ' months')::interval` |
+| `TO_CHAR(d,'YYYY-MM-DD')` | `to_char(d,'YYYY-MM-DD')` — formats mostly compatible |
+| `TO_DATE('...','...')` | `to_date('...','...')` or `to_timestamp` |
+| `INSTR(s,sub)` | `position(sub in s)` or `strpos(s,sub)` |
+| `SUBSTR(s,p,l)` | `substring(s from p for l)` or `substr` |
+| `LENGTH` / `LENGTHB` | `length` / `octet_length` |
+| `REGEXP_LIKE(s,p)` | `s ~ p` |
+| `REGEXP_SUBSTR` | `regexp_match` / `regexp_matches` |
+| `LISTAGG(c, ',') WITHIN GROUP (ORDER BY ...)` | `string_agg(c, ',' ORDER BY ...)` |
+| `ROWNUM <= N` | `LIMIT N` |
+| `ROWNUM` in subquery for paging | window function `row_number() OVER (...)` |
+| `DUAL` | omit `FROM DUAL` |
+| `SEQ.NEXTVAL` | `nextval('seq')` |
+| `SEQ.CURRVAL` | `currval('seq')` |
+| `CONNECT BY PRIOR` | `WITH RECURSIVE` CTE |
+| `MERGE INTO` | `INSERT ... ON CONFLICT (...) DO UPDATE SET ...` |
+
+**PL/SQL → PL/pgSQL**
+
+| PL/SQL | PL/pgSQL |
+|---|---|
+| `CREATE OR REPLACE PROCEDURE` | `CREATE OR REPLACE PROCEDURE` (PG 11+) |
+| `CREATE OR REPLACE FUNCTION` | `CREATE OR REPLACE FUNCTION ... RETURNS ... AS $$ ... $$ LANGUAGE plpgsql` |
+| Packages | No equivalent — split into schema with multiple functions; move package state to a table or session GUCs |
+| `%TYPE`, `%ROWTYPE` | Supported in PL/pgSQL |
+| `EXCEPTION WHEN NO_DATA_FOUND` | `EXCEPTION WHEN NO_DATA_FOUND` |
+| Implicit cursors `SQL%ROWCOUNT` | `GET DIAGNOSTICS rc = ROW_COUNT` |
+| `DBMS_OUTPUT.PUT_LINE` | `RAISE NOTICE` |
+| Autonomous transactions | No native support — use `dblink` to self, or refactor |
+| Global temporary tables | `CREATE TEMP TABLE ... ON COMMIT DELETE ROWS` |
+
+**Always flag (Oracle → PG):** `''` == `NULL` dependence, `ROWID`, `MODEL` clause, materialized view refresh modes, DBMS_*/UTL_* packages, `DBMS_SCHEDULER` jobs.
+
+### SQL Server → PostgreSQL
+
+**Built-ins**
+
+| SQL Server | PostgreSQL |
+|---|---|
+| `GETDATE()` | `CURRENT_TIMESTAMP` |
+| `SYSUTCDATETIME()` | `CURRENT_TIMESTAMP AT TIME ZONE 'UTC'` |
+| `ISNULL(a,b)` | `COALESCE(a,b)` |
+| `LEN(s)` | `length(s)` |
+| `DATALENGTH(s)` | `octet_length(s)` |
+| `CHARINDEX(sub,s)` | `position(sub in s)` |
+| `SUBSTRING(s,p,l)` | `substring(s from p for l)` |
+| `IIF(cond,a,b)` | `CASE WHEN cond THEN a ELSE b END` |
+| `FORMAT(d,'yyyy-MM-dd')` | `to_char(d,'YYYY-MM-DD')` |
+| `DATEADD(mm,n,d)` | `d + (n \|\| ' months')::interval` |
+| `DATEDIFF(dd,a,b)` | `(b::date - a::date)` |
+| `DATEPART(yy,d)` | `extract(year from d)` |
+| `NEWID()` | `gen_random_uuid()` (requires `pgcrypto`) |
+| `TOP N` | `LIMIT N` |
+| `@@IDENTITY` / `SCOPE_IDENTITY()` | `INSERT ... RETURNING id` |
+| `STRING_AGG(c, ',') WITHIN GROUP` | `string_agg(c, ',' ORDER BY ...)` |
+| `PIVOT` / `UNPIVOT` | rewrite with `CASE` + `GROUP BY` or `crosstab` (tablefunc) |
+| `OUTER APPLY` | `LEFT JOIN LATERAL ... ON true` |
+| `CROSS APPLY` | `JOIN LATERAL ... ON true` |
+
+**T-SQL → PL/pgSQL**
+
+| T-SQL | PL/pgSQL |
+|---|---|
+| `EXEC sp_name @p=1` | `CALL sp_name(1)` or `SELECT sp_name(1)` |
+| `DECLARE @v INT` | `DECLARE v INT;` |
+| `RAISERROR` / `THROW` | `RAISE EXCEPTION` |
+| `TRY...CATCH` | `BEGIN ... EXCEPTION WHEN ...` |
+| Temp tables `#t` | `CREATE TEMP TABLE t ON COMMIT DROP` |
+| Table variables `@t TABLE(...)` | `CREATE TEMP TABLE` or `UNNEST` of arrays |
+| `WITH (NOLOCK)` | drop; set isolation `READ UNCOMMITTED` and flag |
+| `OUTPUT INSERTED.*` | `RETURNING *` |
+
+**Always flag (SQL Server → PG):** `WITH (NOLOCK)`, `MERGE` with multi-action, `HIERARCHYID`, CLR/SQLCLR, linked servers (→ FDW), Service Broker (→ `LISTEN/NOTIFY`), indexed views, computed PERSISTED columns (→ `GENERATED ALWAYS AS ... STORED`), case-insensitive collations (→ `citext`).
+
+### MySQL / MariaDB → PostgreSQL
+
+**Built-ins**
+
+| MySQL | PostgreSQL |
+|---|---|
+| `IFNULL(a,b)` | `COALESCE(a,b)` |
+| `IF(cond,a,b)` | `CASE WHEN cond THEN a ELSE b END` |
+| `NOW()` | `CURRENT_TIMESTAMP` |
+| `UNIX_TIMESTAMP(d)` | `extract(epoch from d)::bigint` |
+| `FROM_UNIXTIME(n)` | `to_timestamp(n)` |
+| `DATE_FORMAT(d,'%Y-%m-%d')` | `to_char(d,'YYYY-MM-DD')` — verify format codes |
+| `STR_TO_DATE(s,fmt)` | `to_date(s,fmt)` / `to_timestamp` |
+| `CONCAT(a,b,c)` | `concat(a,b,c)` or `a \|\| b \|\| c` |
+| `GROUP_CONCAT(c SEPARATOR ',')` | `string_agg(c,',')` |
+| `INSERT ... ON DUPLICATE KEY UPDATE` | `INSERT ... ON CONFLICT (...) DO UPDATE` |
+| `REPLACE INTO` | `INSERT ... ON CONFLICT DO UPDATE` (REPLACE deletes+inserts; preserve identity carefully) |
+| `LAST_INSERT_ID()` | `INSERT ... RETURNING id` |
+| `LOCATE(sub,s)` | `position(sub in s)` |
+| `SUBSTRING_INDEX` | rewrite with `split_part` |
+| `FIELD(x,a,b,c)` | `CASE x WHEN a THEN 1 WHEN b THEN 2 WHEN c THEN 3 END` |
+| Backticks `` `name` `` | double quotes `"name"` |
+
+**Quirks (always flag):**
+- MySQL implicit `WHERE str_col = 0` matches non-numeric strings; PG errors.
+- MySQL relaxed GROUP BY; PG strict.
+- Identifier case — standardize on lowercase.
+- `utf8` vs `utf8mb4` — migrate as full UTF-8.
+- Zero dates `'0000-00-00'` invalid in PG; map to NULL.
+
+### On-Prem → Cloud-Managed DB
+
+**Same-Engine Managed Targets**
+
+| Source | Common Targets |
+|---|---|
+| Oracle | Oracle Cloud (OCI), Amazon RDS for Oracle |
+| SQL Server | Azure SQL Database / Managed Instance, Amazon RDS for SQL Server, Cloud SQL for SQL Server |
+| PostgreSQL | Azure Database for PostgreSQL, Amazon RDS / Aurora PostgreSQL, Cloud SQL PostgreSQL, AlloyDB, Neon, Supabase |
+| MySQL | Azure Database for MySQL, Amazon RDS / Aurora MySQL, Cloud SQL MySQL, PlanetScale |
+| MongoDB | MongoDB Atlas, Amazon DocumentDB (compat layer), Cosmos DB for MongoDB API |
+| Cassandra | DataStax Astra, Amazon Keyspaces, Azure Managed Cassandra |
+| Redis | Azure Cache for Redis, Amazon ElastiCache / MemoryDB, Cloud Memorystore |
+
+**Cross-Cutting Changes (any cloud move)**
+
+- **Connectivity**: endpoint DNS, enforce TLS 1.2+, prefer Private Link / VPC peering.
+- **Auth**: Managed Identity (Azure) / IAM DB auth (AWS) / IAM SA (GCP) — replace static passwords.
+- **Secrets**: Key Vault / Secrets Manager / Secret Manager; env-injected; never committed.
+- **Connection pooling**: managed DBs enforce stricter `max_connections`; add PgBouncer / RDS Proxy / Cloud SQL Auth Proxy.
+- **Retries**: add retry-on-transient-error (HikariCP+resilience4j; EF Core `EnableRetryOnFailure`; SQLAlchemy `pool_pre_ping`+tenacity; `pg`/`mysql2` reconnect).
+- **Backups/PITR**: drop app-managed dump cron; use managed backup; document RPO/RTO.
+- **HA**: zonal/multi-AZ/multi-region; read replicas via read-only connection string.
+- **Monitoring**: cloud-native + Query Performance Insight / Performance Insights / Query Insights.
+
+**Cloud-Specific Quirks (always flag):**
+- **Azure SQL DB**: no cross-DB queries default, no `xp_cmdshell`/SQL Agent (use Elastic Jobs), `USE` doesn't switch DB.
+- **Azure SQL MI**: supports SQL Agent, cross-DB queries, linked servers (limited).
+- **RDS / Aurora**: no SUPERUSER/`sysadmin`; parameter groups; Aurora storage auto-scales.
+- **Cloud SQL / AlloyDB**: IAM DB auth; Auth Proxy; AlloyDB columnar engine incompatibilities.
+- **Cosmos DB**: API choice permanent; RU/s cost model; partition key permanent and performance-defining.
+- **DocumentDB / Cosmos Mongo API**: subset of operators — verify per version.
+
+**Always flag**: hard-coded on-prem hostnames/IPs, embedded credentials, server-admin features (SQL Agent, xp_cmdshell, OS-level file access, `UTL_FILE`, `BULK INSERT` from local disk), linked servers/dblinks to on-prem hosts, server-local-time assumptions, cross-database queries.
+
+---
+
+## ORM / Data Access Mapping Changes
+
+Modify ORM **dialect / provider / driver** first. Then audit native/raw queries separately — ORM swaps do **not** translate raw SQL.
+
+### Java — Hibernate / JPA
+
+| Setting | Change |
+|---|---|
+| `hibernate.dialect` | `OracleDialect` → `PostgreSQLDialect` (or `SQLServerDialect`, etc.) |
+| `hibernate.connection.driver_class` | `oracle.jdbc.OracleDriver` → `org.postgresql.Driver` |
+| `hibernate.connection.url` | `jdbc:oracle:thin:@...` → `jdbc:postgresql://host:5432/db` |
+| Dependency (Maven) | `ojdbc` → `org.postgresql:postgresql` |
+| `@GeneratedValue(strategy=SEQUENCE, generator="seq")` | Verify sequence exists in target; for PG often switch to `IDENTITY` |
+| Native queries `@Query(nativeQuery=true)` | **Manual rewrite** per dialect rules |
+| Stored proc calls `@NamedStoredProcedureQuery` | Re-author proc on target; update names/parameter modes |
+| `@Convert` for booleans (Oracle 1/0) | Remove on PG (native BOOLEAN) |
+
+Check also: `application.properties` / `application.yml` for `spring.jpa.properties.hibernate.*`, `spring.datasource.*`.
+
+### Java — MyBatis / iBATIS
+
+- Replace mapper XML SQL dialect-specific fragments.
+- Update `<databaseId>` in `<select>`/`<update>` if multi-vendor used.
+- Update type handlers for `BLOB`/`CLOB`/`BOOLEAN` differences.
+
+### Java — jOOQ
+
+- Regenerate codegen against new DB.
+- Update `SQLDialect` in `DSLContext` configuration.
+- `jooq-meta` / `jooq-codegen` artifacts swap by vendor.
+
+### .NET — Entity Framework Core
+
+| Change | From → To |
+|---|---|
+| Provider package | `Microsoft.EntityFrameworkCore.SqlServer` → `Npgsql.EntityFrameworkCore.PostgreSQL` (or `Pomelo.EntityFrameworkCore.MySql`, `Oracle.EntityFrameworkCore`) |
+| `UseSqlServer(...)` | `UseNpgsql(...)` |
+| Connection string format | `Server=...;Database=...;` → `Host=...;Database=...;Username=...;Password=...;` |
+| `[Column(TypeName="nvarchar(max)")]` | `[Column(TypeName="text")]` |
+| `FromSqlRaw` / `FromSqlInterpolated` | **Manual rewrite** of native SQL |
+| Migrations | Regenerate or write fresh init migration after provider swap |
+| `RowVersion` / `Timestamp` | SQL Server `rowversion` → PG `xmin` (read-only concurrency token) |
+
+### .NET — Dapper / ADO.NET
+
+- Swap `SqlConnection` → `NpgsqlConnection` / `MySqlConnection` / `OracleConnection`.
+- Parameter prefix: SQL Server `@p`, Oracle `:p`, PostgreSQL `@p` (Npgsql) or `:p` — verify driver.
+- Stored proc calls: `CommandType.StoredProcedure` — verify the proc exists on the target.
+
+### Python — SQLAlchemy
+
+| Change | From → To |
+|---|---|
+| Engine URL | `oracle+cx_oracle://...` → `postgresql+psycopg://...` (or `postgresql+psycopg2://...`) |
+| Dialect-specific types | `oracle.NUMBER` → `Numeric`; `mssql.NVARCHAR` → `String`/`Text` |
+| `server_default=text("SYSDATE")` | `server_default=text("CURRENT_TIMESTAMP")` |
+| Async drivers | `asyncpg` for PG, `aiomysql` for MySQL, `aioodbc` for SQL Server |
+| Raw `text("...")` SQL | **Manual rewrite** |
+
+Alembic: update `sqlalchemy.url` in `alembic.ini`; existing version scripts using vendor SQL → rewrite or guard with `op.get_bind().dialect.name`.
+
+### Python — Django ORM
+
+| Change | From → To |
+|---|---|
+| `DATABASES['default']['ENGINE']` | `django.db.backends.oracle` → `django.db.backends.postgresql` (or `mysql`, `sqlserver` via `mssql-django`) |
+| `JSONField` | Native on PG/MySQL 5.7+/SQL Server 2016+; emulated on Oracle |
+| Custom SQL in `RunSQL` migrations | **Manual rewrite** |
+
+### Node.js — TypeORM / Sequelize / Prisma
+
+| Change | TypeORM | Sequelize | Prisma |
+|---|---|---|---|
+| Dialect/provider | `type: 'postgres'` | `dialect: 'postgres'` | `provider = "postgresql"` |
+| Driver dep | `pg` / `mysql2` / `mssql` / `mongodb` | `pg` + `pg-hstore` / `mysql2` / `tedious` | bundled |
+| Column types | `@Column('text')` | `DataTypes.TEXT` | `@db.Text` |
+| Raw queries | `manager.query(...)` — **rewrite** | `sequelize.query(...)` — **rewrite** | `$queryRaw` / `$executeRaw` — **rewrite** |
+| Migrations | regenerate | regenerate | `prisma migrate dev --create-only`, baseline |
+
+### Node.js — Mongoose (when leaving Mongo)
+
+- Mongoose is Mongo-specific. Replace entirely with target ORM.
+- Re-model documents → relational tables (see Paradigm Shifts).
+- Update validation logic to match new constraints.
+
+### Go — GORM / sqlx
+
+| Change | GORM | sqlx / database/sql |
+|---|---|---|
+| Driver | `gorm.io/driver/postgres` (etc.) | `sql.Open("postgres", ...)` |
+| Open call | `gorm.Open(postgres.Open(dsn))` | `sqlx.Connect("postgres", dsn)` |
+| Types | `gorm:"type:varchar(255)"` | n/a |
+| Placeholders | n/a | `?` (MySQL/SQL Server) vs `$1` (PG) vs `:name` (Oracle) — `sqlx.Rebind` |
+| Raw | `db.Raw(...)` — **rewrite** | **rewrite** |
+
+### Ruby — ActiveRecord
+
+| Change | From → To |
+|---|---|
+| `config/database.yml` `adapter` | `oracle_enhanced` → `postgresql` / `mysql2` / `sqlserver` |
+| Gem | `activerecord-oracle_enhanced-adapter` → `pg` / `mysql2` / `activerecord-sqlserver-adapter` |
+| `find_by_sql` | **Manual rewrite** |
+
+### PHP — Doctrine / Eloquent
+
+- Doctrine: `driver` from `oci8` → `pdo_pgsql`; `Platform` class auto-detects.
+- Eloquent: `config/database.php` driver swap; raw `DB::statement(...)` needs review.
+
+### MongoDB / Document → ORM (paradigm shift)
+
+When migrating off Mongo to relational:
+
+1. Replace Mongoose with Prisma/TypeORM/Sequelize.
+2. Convert nested document fields to either joined child tables (1-N) or `JSONB`/`JSON` columns when access is whole-document.
+3. Translate `ObjectId` → `UUID` (preferred) or `BIGINT`.
+4. Replace aggregation pipelines with SQL (window functions, CTEs).
+5. Replace `populate()` with `JOIN`s or eager-loading API.
+6. Replace change streams with logical replication / CDC / triggers.
+
+### ORM-Agnostic Audit Checklist
+
+- [ ] Dialect / provider package replaced in build manifest
+- [ ] Driver dep replaced
+- [ ] Connection string syntax and credentials externalized
+- [ ] Type-specific column annotations remapped
+- [ ] Identity / sequence strategy aligned
+- [ ] Boolean storage strategy decided
+- [ ] All raw / native query strings rewritten (these never auto-translate)
+- [ ] Stored proc references retargeted or inlined
+- [ ] Migration tool regenerated/re-baselined against target
+- [ ] Tests with embedded DB (H2, SQLite in-memory) replaced with Testcontainers of the real target
+
+---
+
+## Cross-Database Type Mappings
+
+Use the **narrowest target type** that preserves source range and precision. When narrowing is required, record it in the risk register.
+
+### Integer / Numeric
+
+| Logical | Oracle | SQL Server | MySQL | PostgreSQL | DB2 | Snowflake | BigQuery |
+|---|---|---|---|---|---|---|---|
+| Boolean | `NUMBER(1)` / `CHAR(1)` | `BIT` | `TINYINT(1)` | `BOOLEAN` | `SMALLINT` | `BOOLEAN` | `BOOL` |
+| Tiny int | `NUMBER(3)` | `TINYINT` | `TINYINT` | `SMALLINT` | `SMALLINT` | `NUMBER(3,0)` | `INT64` |
+| Small int | `NUMBER(5)` | `SMALLINT` | `SMALLINT` | `SMALLINT` | `SMALLINT` | `NUMBER(5,0)` | `INT64` |
+| Int | `NUMBER(10)` | `INT` | `INT` | `INTEGER` | `INTEGER` | `NUMBER(10,0)` | `INT64` |
+| Big int | `NUMBER(19)` | `BIGINT` | `BIGINT` | `BIGINT` | `BIGINT` | `NUMBER(19,0)` | `INT64` |
+| Decimal | `NUMBER(p,s)` | `DECIMAL(p,s)` | `DECIMAL(p,s)` | `NUMERIC(p,s)` | `DECIMAL(p,s)` | `NUMBER(p,s)` | `NUMERIC` / `BIGNUMERIC` |
+| Float | `BINARY_FLOAT` | `REAL` | `FLOAT` | `REAL` | `REAL` | `FLOAT` | `FLOAT64` |
+| Double | `BINARY_DOUBLE` | `FLOAT(53)` | `DOUBLE` | `DOUBLE PRECISION` | `DOUBLE` | `FLOAT` | `FLOAT64` |
+| Money | `NUMBER(19,4)` | `MONEY` | `DECIMAL(19,4)` | `NUMERIC(19,4)` | `DECIMAL(19,4)` | `NUMBER(19,4)` | `NUMERIC` |
+
+### String / Bytes / UUID
+
+| Logical | Oracle | SQL Server | MySQL | PostgreSQL | DB2 | Snowflake | BigQuery |
+|---|---|---|---|---|---|---|---|
+| Fixed string | `CHAR(n)` | `CHAR(n)` / `NCHAR(n)` | `CHAR(n)` | `CHAR(n)` | `CHAR(n)` | `CHAR(n)` | `STRING` |
+| Var string | `VARCHAR2(n)` | `NVARCHAR(n)` | `VARCHAR(n)` | `VARCHAR(n)` | `VARCHAR(n)` | `VARCHAR(n)` | `STRING` |
+| Large text | `CLOB` | `NVARCHAR(MAX)` | `LONGTEXT` | `TEXT` | `CLOB` | `VARCHAR` | `STRING` |
+| Bytes | `RAW(n)` / `BLOB` | `VARBINARY(n)` / `(MAX)` | `BLOB` / `LONGBLOB` | `BYTEA` | `BLOB` | `BINARY` | `BYTES` |
+| UUID | `RAW(16)` / `CHAR(36)` | `UNIQUEIDENTIFIER` | `CHAR(36)` / `BINARY(16)` | `UUID` | `CHAR(36)` | `STRING` | `STRING` |
+
+### Date / Time
+
+| Logical | Oracle | SQL Server | MySQL | PostgreSQL | DB2 | Snowflake | BigQuery |
+|---|---|---|---|---|---|---|---|
+| Date only | `DATE` (has time) | `DATE` | `DATE` | `DATE` | `DATE` | `DATE` | `DATE` |
+| Time only | `INTERVAL DAY TO SECOND` | `TIME` | `TIME` | `TIME` | `TIME` | `TIME` | `TIME` |
+| Timestamp (naive) | `TIMESTAMP(n)` | `DATETIME2(n)` | `DATETIME(n)` | `TIMESTAMP(n)` | `TIMESTAMP` | `TIMESTAMP_NTZ` | `DATETIME` |
+| Timestamp w/ TZ | `TIMESTAMP WITH TIME ZONE` | `DATETIMEOFFSET` | (none native) | `TIMESTAMPTZ` | `TIMESTAMP WITH TIME ZONE` | `TIMESTAMP_TZ` | `TIMESTAMP` |
+
+**Always store UTC** at rest unless legal/business reasons require local. Convert at the application boundary.
+
+### JSON / Semi-Structured / XML / Geo
+
+| Logical | Oracle | SQL Server | MySQL | PostgreSQL | Snowflake | BigQuery |
+|---|---|---|---|---|---|---|
+| JSON | `JSON` (21c+) / `CLOB`+check | `NVARCHAR(MAX)` + `ISJSON` / native `JSON` (2022+) | `JSON` | `JSONB` (preferred) | `VARIANT` | `JSON` |
+| Array | nested table | (use JSON) | (use JSON) | `<type>[]` | `ARRAY` | `ARRAY<...>` |
+| XML | `XMLTYPE` | `XML` | (store as TEXT) | `XML` | n/a | n/a |
+| Geometry | `SDO_GEOMETRY` | `GEOMETRY` | `GEOMETRY` | PostGIS `geometry` | n/a | `GEOGRAPHY` |
+
+### Vendor-Specific (Flag Always)
+
+| Source Feature | Action |
+|---|---|
+| Oracle `ROWID`/`UROWID` | Refactor app — no portable equivalent |
+| Oracle nested tables / VARRAY | Normalize into child table or `JSONB` |
+| SQL Server `HIERARCHYID` | Refactor with `ltree` (PG) or recursive CTE |
+| SQL Server `ROWVERSION` | PG `xmin` system column or trigger-maintained `BIGINT` |
+| SQL Server `SQL_VARIANT` | Refactor — typed columns or `JSONB` |
+| MySQL `ENUM` | Target `ENUM` (PG) or lookup table |
+| MySQL `SET` | Normalize or array column |
+| MySQL `YEAR` | `SMALLINT` + CHECK |
+| PG `INET`/`CIDR`/`MACADDR` | Store as `VARCHAR` on others; validate at app layer |
+| PG `RANGE` types | Decompose into `from`/`to` columns |
+| Mongo `ObjectId` | `UUID` (preferred) or `CHAR(24)` |
+| Mongo nested doc | Child table OR `JSONB` |
+| DynamoDB PK+SK | Composite primary key in RDBMS |
+
+### Precision / Encoding Cautions
+
+- **NUMERIC unbounded** (PostgreSQL) — slower than fixed-precision; only use when needed.
+- **DOUBLE** is not exact — never use for currency.
+- **VARCHAR(n) byte vs char** — Oracle defaults to bytes; PG to characters; verify.
+- **CHAR padding** differs — PG pads to length; many drivers trim on read.
+- **Time precision**: SQL Server `DATETIME` ≈ 3.33 ms; `DATETIME2(7)` is 100 ns; PG `TIMESTAMP` is microseconds. Align target precision.
+- Standardize on **UTF-8** at cluster level. MySQL: `utf8mb4` not `utf8` (3-byte). Oracle: `NLS_CHARACTERSET = AL32UTF8`.
+
+---
+
+## Paradigm Shifts
+
+When source and target differ in **data model**, re-model from access patterns.
+
+### Relational → Document (RDBMS → MongoDB / Cosmos / DocumentDB)
+
+1. **Inventory access patterns**, not schemas. List every read query, every write, and cardinality.
+2. Group queries by **aggregate boundary** — the unit of consistency the app expects to update atomically.
+3. Each aggregate becomes a **document collection**. Embed children read together; reference children queried independently.
+4. **Denormalize lookup values** that don't change often. Accept duplication for read speed.
+5. Define **partition / shard key** based on the most common predicate.
+6. Replace JOINs with embedded subdocs (preferred), app-side joins (small N), or `$lookup` (last resort).
+7. Replace cross-table transactions with single-doc atomic updates, multi-doc transactions (Mongo 4.0+, Cosmos limited), or saga/outbox.
+
+**ID**: `UUID` (preserve) or `ObjectId` (new); avoid auto-increment.
+**Schema validation**: `$jsonSchema` validators in source control.
+**Always flag**: strong-consistency expectations, reporting queries, FK cascades (move to app code).
+
+### Document → Relational (MongoDB → PostgreSQL / SQL Server / etc.)
+
+1. Sample real documents — discover actual schema, not what code claims.
+2. Identify: stable fields → typed columns; polymorphic → `JSONB` or child table; bounded arrays → child table with FK; unbounded → separate table.
+3. Map `ObjectId` → `UUID` (preferred) or `CHAR(24)`.
+4. Re-create relations as foreign keys.
+5. Translate pipelines: `$match`→`WHERE`, `$group`→`GROUP BY`/windows, `$lookup`→`JOIN`, `$unwind`→`LATERAL JOIN` on `jsonb_array_elements`, `$facet`→multiple CTEs.
+6. Replace `findOneAndUpdate` upserts → `INSERT ... ON CONFLICT`.
+7. Replace change streams → logical replication / CDC (Debezium) / trigger-based outbox.
+
+### OLTP → OLAP / Warehouse (additive — operational DB stays)
+
+1. Identify analytical queries currently on OLTP.
+2. Design star/snowflake schema; fix grain explicitly.
+3. Ingestion via CDC (Debezium→Kafka→warehouse) OR scheduled ELT (Fivetran, Airbyte, dbt).
+4. Partition/cluster facts by date or tenant.
+5. Move heavy reports off OLTP.
+
+**Always flag**: latency expectations (near-real-time at best), cost model (per scan/compute), PII controls.
+
+### Wide-Column (Cassandra / ScyllaDB) ↔ Relational
+
+- Cassandra → RDBMS: recover canonical model from access patterns; composite PKs map directly; counters → app-side increment with row lock; TTLs → cleanup job; LWT (`IF NOT EXISTS`) → `ON CONFLICT DO NOTHING`.
+- RDBMS → Cassandra/DynamoDB: query-first design; each query its own table; choose partition key for even distribution; clustering key for sort; denormalize relentlessly; avoid `ALLOW FILTERING`.
+
+### Key-Value (Redis / DynamoDB) ↔ Other
+
+- Treat Redis as cache, not store of record, unless persistence-configured.
+- DynamoDB ↔ relational: single-table design common; flag heavily.
+
+### Graph (Neo4j / Cosmos Gremlin / Neptune) ↔ Relational
+
+- Nodes → tables. Edges → join tables with source/target FKs and `type`.
+- Traversals → recursive CTEs (limited depth) or graph extension (Apache AGE on PG).
+
+### Cross-Paradigm Always-Flag
+
+- Cross-store transactions (use outbox / saga)
+- Cross-store joins (denormalize or precompute)
+- Reporting expectations (different latency/consistency)
+- Backup/restore strategy (per engine)
+- Schema evolution (RDBMS=explicit migrations; document=optional; warehouse=column-add)
+
+---
+
+## Data Migration & Cutover Strategies
+
+### Strategy Selection Matrix
+
+| Strategy | Downtime | Risk | Data Volume | Schema Change | When to Use |
+|---|---|---|---|---|---|
+| Big-bang dump/load | High (hours+) | Medium | < 100 GB | Any | Non-prod, batch systems, generous windows |
+| Snapshot + replay | Medium | Medium | < 1 TB | Light | Same-engine cloud lift-and-shift |
+| Managed migration service (DMS / ADF / Datastream) | Low | Low/Med | TB scale | Light to moderate | Most cloud moves |
+| CDC replication (Debezium / GoldenGate / Striim) | Near-zero | Medium | Any | Moderate | Cross-engine, long migration windows |
+| Dual-write strangler | Near-zero | High (complexity) | Any | Heavy | Engine swap with paradigm shift |
+| Expand-contract | Zero | Low | Any | Heavy | Within-DB refactors before engine change |
+| Read replica promotion | Minutes | Low | Any | None | Same-engine, when CDC replica supported |
+
+### Recommended Default: Expand → Backfill → Dual-write → Shadow-read → Cutover → Contract
+
+1. **Expand** target schema in parallel; deploy app changes that compile against new schema but still use old; add feature flag for read source / write destinations.
+2. **Backfill** historical data via bulk load or CDC initial snapshot. Tools: AWS DMS, Azure DMS/ADF, GCP DMS/Datastream, GoldenGate, `pg_dump`/`mysqldump`/`bcp`/`expdp`, custom chunked ETL. Verify row counts + checksums.
+3. **Dual-write** new transactions to both:
+   - Synchronous in-app (XA/2PC if supported; compensate on failure)
+   - Outbox (write source + outbox in one local tx; publisher streams to target)
+   - CDC-based (only write source; CDC streams async)
+   - Idempotency required; define LWW or version-based conflict policy.
+4. **Shadow-read**: wrap read path; issue same query to source (primary) and target (shadow); return source; async-log mismatches. Sample 1–10% (high-volume) to 100% (low-volume/critical). Target < 0.01% mismatch.
+5. **Cutover** — pre-checks: replication lag < threshold, mismatches resolved, backup taken, rollback dry-run done. Switch via feature flag or DNS / connection-string swap. Post-checks: errors flat, latency p99 within budget, DB CPU/IOPS sane.
+6. **Contract** — disable writes on source (DENY/revoke); keep read-only for rollback window (7–30 days); decommission after sign-off.
+
+### Rollback
+
+Define abort criteria before cutover: error rate above baseline, latency above budget, data mismatch threshold, resource saturation. Dry-run procedure in staging. Typical: flip flag back; resume source; replay divergent writes from CDC stream; communicate.
+
+### Performance Hardening Pre-Migration
+
+- Drop **non-PK indexes** on target during bulk load; recreate after.
+- Disable triggers during bulk load; re-enable.
+- `UNLOGGED` (PG) or `BULK_LOGGED` (SQL Server) during load, then convert.
+- `ANALYZE` / `UPDATE STATISTICS` immediately after load.
+- Validate query plans on representative queries before opening traffic.
+
+### Validation Pre-Cutover
+
+- [ ] Row counts match per table (or expected delta documented)
+- [ ] Checksum / hash of sampled rows match
+- [ ] FK / unique / check constraints validated on target
+- [ ] Sequences / identity aligned (target > source max + buffer)
+- [ ] Indexes present and used (verify plans on top-N queries)
+- [ ] Stats refreshed
+- [ ] Connection pool sized for target
+- [ ] Backup taken on source
+- [ ] Rollback procedure dry-run done
+- [ ] Monitoring dashboards live for target
+
+### Migration Always-Flag
+
+- Identity / sequence collisions during dual-write
+- Timezone handling shifts in flight
+- Encoding conversion errors (latin1 → utf8mb4)
+- Triggers on target firing during bulk load
+- FKs violated due to load order — load in topological order
+- Soft-delete patterns differing between source and target
+
+---
+
+## Validation Pack (Phase 5 Deliverables)
+
+### 1. Schema Diff Report
+
+```
+| Object | Source | Target | Diff | Resolution |
+|---|---|---|---|---|
+| public.orders.amount | NUMBER(12,2) NOT NULL | NUMERIC(12,2) NOT NULL | type rename | OK |
+| public.orders.region | VARCHAR2(3 BYTE) | VARCHAR(3) | semantic-equivalent | OK |
+| public.orders.idx_region | bitmap index | btree index | engine difference | accepted |
+```
+
+### 2. Data Equivalence Tests
+
+```sql
+-- Row count
+SELECT COUNT(*) FROM <table>;          -- source vs target
+
+-- Boundary checks
+SELECT MIN(pk), MAX(pk), MIN(updated_at), MAX(updated_at) FROM <table>;
+
+-- Aggregate parity
+SELECT SUM(amount), AVG(amount) FROM <table>;
+
+-- Sampled hash (deterministic order)
+SELECT md5(string_agg(t::text, '|' ORDER BY pk))
+FROM (SELECT * FROM <table> ORDER BY pk LIMIT 10000) t;
+```
+
+### 3. Query Equivalence Harness
+
+For top N queries by frequency and business criticality:
+
+```
+| Query ID | Source Rows | Target Rows | Match % | First Diff |
+|---|---|---|---|---|
+| Q-001 listOrders | 12453 | 12453 | 100.00 | — |
+| Q-014 reportMonthly | 312 | 312 | 99.68 | row 47, col total_tax: 19.99 vs 19.990 |
+```
+
+### 4. Performance Smoke Test
+
+10–20 representative queries (OLTP read, OLTP write, batch report). Capture elapsed, rows, plan shape. Target p95 within 1.5× source baseline (tighter for hot path). No full scans on > 1M-row tables unless intentional.
+
+### 5. Migration Script Pack
+
+- `forward/` — DDL + data load + verification, idempotent and restartable
+- `backward/` — reverse DDL where reversible; documented one-way changes
+- `verify/` — schema diff, count, checksum, smoke tests
+- `cutover/` — runbook with flags, switch commands, abort triggers
+
+Scripts must be wrapped in transactions where supported, idempotent where safe, logging progress and row counts, and abort loudly on first error.
+
+### 6. Risk Register
+
+```
+| ID | Category | Description | Likelihood | Impact | Mitigation | Owner |
+|---|---|---|---|---|---|---|
+| R-01 | Semantic | Oracle empty-string-as-NULL in customers.notes | Med | Med | NULLIF(notes,'') in inserts; audit reads | DEV |
+| R-02 | Perf | MERGE decomposed → 2 stmts on PG | Low | Low | Serializable iso; observe | DEV |
+| R-03 | Data | CHAR(8) trailing-space trim diff | Med | Low | TRIM on read where compared | DEV |
+| R-04 | Ops | Connection limits lower on managed PG | High | Med | Add PgBouncer / RDS Proxy | OPS |
+```
+
+### 7. Change Manifest
+
+```
+| File | Category | Change | Reason |
+|---|---|---|---|
+| src/main/resources/db/migration/V1__init.sql | DDL | Oracle types → PG types | engine swap |
+| src/main/java/.../OrderRepository.java | ORM | @SequenceGenerator → @GeneratedValue IDENTITY | PG idiom |
+| pom.xml | Dependency | ojdbc → postgresql | driver |
+| application.yml | Config | JDBC URL + dialect | engine swap |
+```
+
+### 8. Manual Follow-ups
+
+- Production credential rotation
+- Grants / role mapping in target (DBA-owned)
+- Encrypted column re-keying
+- Backup retention policy migration
+- Disaster recovery drill on new platform
+- Monitoring dashboard re-wire
+- Vendor licensing termination on source
+
+### 9. Sign-Off Checklist
+
+- [ ] Schema diff report attached, all diffs explained or resolved
+- [ ] Row counts and aggregates match per table
+- [ ] Top-N query equivalence at ≥ 99.9%
+- [ ] Performance smoke within budget
+- [ ] Forward + backward scripts checked in
+- [ ] Risk register reviewed with stakeholders
+- [ ] Change manifest complete
+- [ ] Manual follow-ups assigned
+- [ ] Rollback dry-run completed
+- [ ] Stakeholders informed of cutover window
